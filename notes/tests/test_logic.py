@@ -1,10 +1,12 @@
 from http import HTTPStatus
+from pytils.translit import slugify
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
 
 from notes.models import Note
+from notes.forms import WARNING
 
 User = get_user_model()
 
@@ -48,7 +50,7 @@ class NoteCreation(TestCase):
         self.assertEqual(note.slug, self.SLUG_NOTE)
 
 
-class TestCommentEditDelete(TestCase):
+class TestNotetEditDelete(TestCase):
     NOTE_TEXT = 'It is note TEXT'
     TITLE_NOTE = 'Note 1'
     SLUG_NOTE = 'slug_ab1'
@@ -65,14 +67,22 @@ class TestCommentEditDelete(TestCase):
         cls.reader_client = Client()
         cls.reader_client.force_login(cls.reader)
 
+        cls.note_data = {
+            'title': cls.TITLE_NOTE,
+            'text': cls.NOTE_TEXT,
+            'slug': cls.SLUG_NOTE,
+            'author': cls.author,
+        }
+
         cls.note = Note.objects.create(
-            title=cls.TITLE_NOTE,
-            text=cls.NOTE_TEXT,
-            slug=cls.SLUG_NOTE,
+            title=cls.note_data['title'],
+            text=cls.note_data['text'],
+            slug=cls.note_data['slug'],
             author=cls.author,
         )
 
         cls.url_list = reverse('notes:list')
+        cls.add_note_url = reverse('notes:add')
         cls.success_url = reverse('notes:success')
         cls.edit_url = reverse('notes:edit', args=(cls.note.slug,))
         cls.delete_url = reverse('notes:delete', args=(cls.note.slug,))
@@ -107,3 +117,25 @@ class TestCommentEditDelete(TestCase):
         self.assertEqual(response.status_code, HTTPStatus.NOT_FOUND)
         self.note.refresh_from_db()
         self.assertEqual(self.note.text, self.NOTE_TEXT)
+
+    def test_not_unique_slug(self):
+        response = self.author_client.post(
+            self.add_note_url, data=self.note_data)
+        self.assertEqual(Note.objects.count(), 1)
+
+        self.assertFormError(
+            response, form='form', field='slug',
+            errors=(self.note.slug + WARNING))
+
+    def test_empty_slug(self):
+        self.note_data.pop('slug')
+        response = self.author_client.post(
+            self.add_note_url, data=self.note_data
+        )
+        self.assertEqual(Note.objects.count(), 2)
+        self.assertRedirects(response, self.success_url)
+
+        note = Note.objects.exclude(slug=self.SLUG_NOTE).get()
+        expected_slug = slugify(note.title)[:100]
+
+        self.assertEqual(note.slug, expected_slug)

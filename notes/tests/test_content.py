@@ -16,6 +16,7 @@ class TestAuthorizedPages(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.author = User.objects.create(username='Firuz')
+        cls.reader = User.objects.create(username='Reader')
 
         all_news = [
             Note(
@@ -47,3 +48,10 @@ class TestAuthorizedPages(TestCase):
                 response = self.client.get(url)
                 self.assertIn('form', response.context)
                 self.assertIsInstance(response.context['form'], NoteForm)
+
+    def test_anotherUser_list_hasnt_another_user_notes(self):
+        self.client.force_login(self.reader)
+        response = self.client.get(self.LIST_PAGE_URL)
+        object_list = response.context['object_list']
+        notes_count = object_list.count()
+        self.assertEqual(notes_count, 0)
